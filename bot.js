@@ -32,8 +32,8 @@ const abis = require('./abis');
 // 2. GLOBAL VARIABLES
 // -----------------------------------------
 
-let allowedLink = false, selectedProvider = null, eventSubTrading = null, eventSubCallbacks = null, nonce = null,
-	providers = [], web3 = [], blocks = [], maxPriorityFeePerGas = 50,
+let allowedLink = false, currentlySelectedWeb3ProviderIndex = -1, eventSubTrading = null, eventSubCallbacks = null, nonce = null,
+	providers = [], web3 = [], maxPriorityFeePerGas = 50,
 	openTrades = [], spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = [], ordersTriggered = [],
 	storageContract, tradingContract, tradingAddress, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
 	nftTimelock, maxTradesPerPair,
@@ -61,7 +61,7 @@ const MAX_GAS_PRICE_GWEI = parseInt(process.env.MAX_GAS_PRICE_GWEI, 10),
 	  AUTO_HARVEST_SEC = parseInt(process.env.AUTO_HARVEST_SEC, 10);
 
 async function checkLinkAllowance(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
 		const allowance = await linkContract.methods.allowance(process.env.PUBLIC_KEY, process.env.STORAGE_ADDRESS).call();
 		if(parseFloat(allowance) > 0){
 			allowedLink = true;
@@ -73,13 +73,13 @@ async function checkLinkAllowance(){
 				from: process.env.PUBLIC_KEY,
 				to : linkContract.options.address,
 				data : linkContract.methods.approve(process.env.STORAGE_ADDRESS, "115792089237316195423570985008687907853269984665640564039457584007913129639935").encodeABI(),
-				maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-				maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-				gas: web3[selectedProvider].utils.toHex("100000")
+				maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+				maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+				gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("100000")
 			};
 
-			web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-				web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+			web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+				web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 				.on('receipt', () => {
 					console.log("LINK successfully approved.");
 					allowedLink = true;
@@ -101,10 +101,10 @@ async function checkLinkAllowance(){
 // 4. WEB3 PROVIDER
 // -----------------------------------------
 
-const WSS_URLS = process.env.WSS_URLS.split(",");
-blocks = new Array(WSS_URLS.length).fill(0);
+const WEB3_PROVIDER_URLS = process.env.WSS_URLS.split(",");
+let currentWeb3ProviderBlocks = new Array(WEB3_PROVIDER_URLS.length).fill(0);
 
-async function selectProvider(newProvider){
+async function selectProvider(newProviderIndex){
 	console.log("Selecting new provider...");
 	
 	const executionStartTime = Date.now();
@@ -115,7 +115,7 @@ async function selectProvider(newProvider){
 	eventSubTrading = null;
 	eventSubCallbacks = null;
 	
-	storageContract = new web3[newProvider].eth.Contract(abis.STORAGE, process.env.STORAGE_ADDRESS);
+	storageContract = new web3[newProviderIndex].eth.Contract(abis.STORAGE, process.env.STORAGE_ADDRESS);
 
 	// Retrieve all necessary details from the storage contract
 	const [
@@ -142,7 +142,7 @@ async function selectProvider(newProvider){
 		storageContract.methods.linkErc677().call()
 	]);
 
-	const aggregatorContract = new web3[newProvider].eth.Contract(abis.AGGREGATOR, aggregatorAddress);
+	const aggregatorContract = new web3[newProviderIndex].eth.Contract(abis.AGGREGATOR, aggregatorAddress);
 	
 	// Retrieve all necessary details from the aggregator contract
 	const [
@@ -153,23 +153,23 @@ async function selectProvider(newProvider){
 		aggregatorContract.methods.nftRewards().call()
 	 ]);
 	
-	pairsStorageContract = new web3[newProvider].eth.Contract(abis.PAIRS_STORAGE, pairsStorageAddress);
-	nftRewardsContract = new web3[newProvider].eth.Contract(abis.NFT_REWARDS, nftRewardsAddress);
+	pairsStorageContract = new web3[newProviderIndex].eth.Contract(abis.PAIRS_STORAGE, pairsStorageAddress);
+	nftRewardsContract = new web3[newProviderIndex].eth.Contract(abis.NFT_REWARDS, nftRewardsAddress);
 
-	callbacksContract = new web3[newProvider].eth.Contract(abis.CALLBACKS, callbacksAddress);
-	tradingContract = new web3[newProvider].eth.Contract(abis.TRADING, tradingAddress);
-	vaultContract = new web3[newProvider].eth.Contract(abis.VAULT, vaultAddress);
+	callbacksContract = new web3[newProviderIndex].eth.Contract(abis.CALLBACKS, callbacksAddress);
+	tradingContract = new web3[newProviderIndex].eth.Contract(abis.TRADING, tradingAddress);
+	vaultContract = new web3[newProviderIndex].eth.Contract(abis.VAULT, vaultAddress);
 
-	nftContract1 = new web3[newProvider].eth.Contract(abis.NFT, nftAddress1);
-	nftContract2 = new web3[newProvider].eth.Contract(abis.NFT, nftAddress2);
-	nftContract3 = new web3[newProvider].eth.Contract(abis.NFT, nftAddress3);
-	nftContract4 = new web3[newProvider].eth.Contract(abis.NFT, nftAddress4);
-	nftContract5 = new web3[newProvider].eth.Contract(abis.NFT, nftAddress5);
+	nftContract1 = new web3[newProviderIndex].eth.Contract(abis.NFT, nftAddress1);
+	nftContract2 = new web3[newProviderIndex].eth.Contract(abis.NFT, nftAddress2);
+	nftContract3 = new web3[newProviderIndex].eth.Contract(abis.NFT, nftAddress3);
+	nftContract4 = new web3[newProviderIndex].eth.Contract(abis.NFT, nftAddress4);
+	nftContract5 = new web3[newProviderIndex].eth.Contract(abis.NFT, nftAddress5);
 
-	linkContract = new web3[newProvider].eth.Contract(abis.LINK, linkAddress);
+	linkContract = new web3[newProviderIndex].eth.Contract(abis.LINK, linkAddress);
 
 	// Update the globally selected provider with this new provider
-	selectedProvider = newProvider;
+	currentlySelectedWeb3ProviderIndex = newProviderIndex;
 	
 	// Subscribe to events using the new provider
 	watchLiveTradingEvents();
@@ -182,24 +182,24 @@ async function selectProvider(newProvider){
 }
 
 const getProvider = (wssId) => {
-	const provider = new Web3.providers.WebsocketProvider(WSS_URLS[wssId], {clientConfig:{keepalive:true,keepaliveInterval:30*1000}});
+	const provider = new Web3.providers.WebsocketProvider(WEB3_PROVIDER_URLS[wssId], {clientConfig:{keepalive:true,keepaliveInterval:30*1000}});
 
 	provider.on('close', () => {
 		setTimeout(() => {
 			if(!provider.connected){
-				console.log(WSS_URLS[wssId]+' closed: trying to reconnect...');
+				console.log(WEB3_PROVIDER_URLS[wssId]+' closed: trying to reconnect...');
 
 				let connectedProvider = -1;
-				for(var i = 0; i < WSS_URLS.length; i++){
+				for(var i = 0; i < WEB3_PROVIDER_URLS.length; i++){
 					if(providers[i].connected){
 						connectedProvider = i;
 						break;
 					}
 				}
-				if(connectedProvider > -1 && selectedProvider === wssId){
+				if(connectedProvider > -1 && currentlySelectedWeb3ProviderIndex === wssId){
 					selectProvider(connectedProvider);
-					console.log("Switched to WSS " + WSS_URLS[selectedProvider]);
-				}else if(connectedProvider === -1 && selectedProvider === wssId){
+					console.log("Switched to WSS " + WEB3_PROVIDER_URLS[currentlySelectedWeb3ProviderIndex]);
+				}else if(connectedProvider === -1 && currentlySelectedWeb3ProviderIndex === wssId){
 					console.log("No WSS to switch to...");
 				}
 
@@ -212,66 +212,116 @@ const getProvider = (wssId) => {
 	provider.on('connect', () => {
 		setTimeout(() => {
 			if(provider.connected){
-				console.log('Connected to WSS '+WSS_URLS[wssId]+'.');
+				console.log('Connected to WSS '+WEB3_PROVIDER_URLS[wssId]+'.');
 
 				let connectedProvider = -1;
-				for(var i = 0; i < WSS_URLS.length; i++){
+				for(var i = 0; i < WEB3_PROVIDER_URLS.length; i++){
 					if(providers[i].connected && i !== wssId){
 						connectedProvider = i;
 						break;
 					}
 				}
-				if(connectedProvider === -1 || selectedProvider === null){
+				if(connectedProvider === -1 || currentlySelectedWeb3ProviderIndex === null){
 					selectProvider(wssId);
-					console.log("Switched to WSS " + WSS_URLS[selectedProvider]);
+					console.log("Switched to WSS " + WEB3_PROVIDER_URLS[currentlySelectedWeb3ProviderIndex]);
 					checkLinkAllowance();
 				}else{
-					console.log("No need to switch WSS, already connected to " + WSS_URLS[selectedProvider]);
+					console.log("No need to switch WSS, already connected to " + WEB3_PROVIDER_URLS[currentlySelectedWeb3ProviderIndex]);
 				}
 			}
 		}, 1*1000);
 	});
-	provider.on('error', () => { console.log("WSS "+WSS_URLS[wssId]+" error"); provider.disconnect(); });
+	provider.on('error', () => { console.log("WSS "+WEB3_PROVIDER_URLS[wssId]+" error"); provider.disconnect(); });
 	return provider;
 };
 
-for(var i = 0; i < WSS_URLS.length; i++){
+for(var i = 0; i < WEB3_PROVIDER_URLS.length; i++){
 	const provider = getProvider(i);
 	providers.push(provider);
 	web3.push(new Web3(provider));
 }
 
-function checkWssAlive(){
-	let promises = [];
-	for(let i = 0; i < WSS_URLS.length; i++){
-		(function(index) {
-			web3[index].eth.getBlockNumber().then((b) => {
-				blocks[index] = b;
-			}).catch(() => {
-				blocks[index] = 0;
-			});
-		})(i);
+// TODO: consider making this a config value
+const MAX_PROVIDER_BLOCK_DRIFT = 5;
+
+async function checkWeb3ProviderLiveness() {
+	console.log("Checking liveness of all " + WEB3_PROVIDER_URLS.length + " web3 provider(s)...");
+
+	const executionStartTime = Date.now();
+
+	const latestWeb3ProviderBlocks = await Promise.all(WEB3_PROVIDER_URLS.map(async (wssUrl, wssIndex) => {
+		try
+		{
+			return await web3[wssIndex].eth.getBlockNumber();
+		} catch (error) {
+			console.log("Error retrieving current block number from provider " + wssUrl + ": " + error.message, error);
+
+			return Number.MIN_SAFE_INTEGER;
+		}
+	}));
+	
+	console.log("Current vs. latest provider blocks: ", WEB3_PROVIDER_URLS, currentWeb3ProviderBlocks, latestWeb3ProviderBlocks);
+
+	// Update global to latest blocks
+	currentWeb3ProviderBlocks = latestWeb3ProviderBlocks;
+
+	const originalWeb3ProviderIndex = currentlySelectedWeb3ProviderIndex;
+
+	// Check if no provider has been selected yet (i.e. this is initialization phase of app)
+	if(originalWeb3ProviderIndex === -1){
+		await selectInitialProvider();
+	} else {
+		await ensureCurrentlySelectedProviderHasLatestBlock();
 	}
 
-	setTimeout(() => {
-		console.log("Blocks: ", blocks);
-		for(var i = 0; i < WSS_URLS.length; i++){
-			if(blocks[i] >= blocks[selectedProvider] + 5){
-				console.log("Switched to WSS "+WSS_URLS[i]+" #"+i+" (" + blocks[i] + " vs " + blocks[selectedProvider]+")");
-				selectProvider(i);
+	console.log("Web3 provider liveness check completed. Took: " + (Date.now() - executionStartTime) + "ms");
+
+	async function selectInitialProvider() {
+		// Find the most recent block
+		const maxProviderBlock = Math.max(...currentWeb3ProviderBlocks);
+		
+		const providerIndex = currentWeb3ProviderBlocks.findIndex(v => v === maxProviderBlock);
+		
+		// Start with the provider with the most recent block
+		await selectProvider(providerIndex);
+
+		console.log("Initial provider selected: " + WEB3_PROVIDER_URLS[providerIndex]);
+	}
+
+	async function ensureCurrentlySelectedProviderHasLatestBlock() {
+		const currentlySelectedWeb3ProviderIndexMaxDriftBlock = currentWeb3ProviderBlocks[currentlySelectedWeb3ProviderIndex] + MAX_PROVIDER_BLOCK_DRIFT;
+		
+		for(let i = 0; i < currentWeb3ProviderBlocks.length; i++){
+			// Don't check the currently selected provider against itself
+			if(i === currentlySelectedWeb3ProviderIndex) {
+				continue;
+			}
+			
+			// If the current provider is ahead of the selected provider by more N blocks then switch to this provider instead
+			if(currentWeb3ProviderBlocks[i] >= currentlySelectedWeb3ProviderIndexMaxDriftBlock){
+				console.log("Switching to provider " + WEB3_PROVIDER_URLS[i] + " #" + i + " (" + currentWeb3ProviderBlocks[i] + " vs " + currentWeb3ProviderBlocks[currentlySelectedWeb3ProviderIndex] + ")");
+				
+				await selectProvider(i);
+				
 				break;
 			}
 		}
-	}, 3*1000);
+
+		if(currentlySelectedWeb3ProviderIndex === originalWeb3ProviderIndex) {
+			console.log("No need to switch to a different provider; sticking with " + WEB3_PROVIDER_URLS[currentlySelectedWeb3ProviderIndex] + ".");
+		} else {
+			console.log("Switched to provider " + WEB3_PROVIDER_URLS[currentlySelectedWeb3ProviderIndex] + " completed.");
+		}
+	}
 }
 
-checkWssAlive();
+checkWeb3ProviderLiveness();
 setInterval(async () => {
-	checkWssAlive();
+	checkWeb3ProviderLiveness();
 }, 10*1000);
 
 setInterval(() => {
-	console.log("Current WSS: " + web3[selectedProvider].currentProvider.url + " (#"+selectedProvider+")");
+	console.log("Current WSS: " + web3[currentlySelectedWeb3ProviderIndex].currentProvider.url + " (#"+currentlySelectedWeb3ProviderIndex+")");
 }, 120*1000);
 
 // -----------------------------------------
@@ -294,7 +344,7 @@ setInterval(() => {
 // -----------------------------------------
 
 async function fetchTradingVariables(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
 		const maxPerPair = await storageContract.methods.maxTradesPerPair().call();
 		const nftSuccessTimelock = await storageContract.methods.nftSuccessTimelock().call();
 		const pairsCount = await pairsStorageContract.methods.pairsCount().call();
@@ -371,8 +421,8 @@ async function selectNft(){
 	return new Promise(async resolve => {
 		if(nftTimelock === undefined || nfts.length === 0){ resolve(null); return; }
 		
-		web3[selectedProvider].eth.net.isListening().then(async () => {
-			const currentBlock = await web3[selectedProvider].eth.getBlockNumber();
+		web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
+			const currentBlock = await web3[currentlySelectedWeb3ProviderIndex].eth.getBlockNumber();
 
 			for(var i = 0; i < nfts.length; i++){
 				const lastSuccess = await storageContract.methods.nftLastSuccess(nfts[i].id).call();
@@ -398,7 +448,7 @@ async function selectNft(){
 // -----------------------------------------
 
 async function fetchOpenTrades(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
 
 		if(spreadsP.length === 0){
 			setTimeout(() => { fetchOpenTrades(); }, 2*1000);
@@ -454,7 +504,7 @@ async function fetchOpenTrades(){
 // -----------------------------------------
 
 function watchLiveTradingEvents(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
 		if(eventSubTrading === null){
 			eventSubTrading = tradingContract.events.allEvents({ fromBlock: 'latest' }).on('data', function (event){
 				const eventName = event.event.toString();
@@ -500,7 +550,7 @@ function watchLiveTradingEvents(){
 // -----------------------------------------
 
 async function refreshOpenTrades(event){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	web3[currentlySelectedWeb3ProviderIndex].eth.net.isListening().then(async () => {
 		const eventName = event.event.toString();
 		const v = event.returnValues;
 		let failed = false;
@@ -770,13 +820,13 @@ function wss(){
 								from: process.env.PUBLIC_KEY,
 								to : tradingAddress,
 								data : tradingContract.methods.executeNftOrder(orderType, t.trader, t.pairIndex, t.index, nft.id, nft.type).encodeABI(),
-								maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-								maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-								gas: web3[selectedProvider].utils.toHex("2000000")
+								maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+								maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+								gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("2000000")
 							};
 
-							web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-								web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+							web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+								web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 								.on('receipt', () => {
 									console.log("Triggered (order type: " + orderInfo.name + ", nft id: "+orderInfo.nftId+")");
 									setTimeout(() => {
@@ -821,13 +871,13 @@ if(process.env.VAULT_REFILL_ENABLED){
 					from: process.env.PUBLIC_KEY,
 					to : vaultContract.options.address,
 					data : vaultContract.methods.refill().encodeABI(),
-					maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-					maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-					gas: web3[selectedProvider].utils.toHex("1000000")
+					maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+					maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+					gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("1000000")
 				};
 
-				web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-					web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+				web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+					web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 					.on('receipt', () => {
 						console.log("Vault successfully refilled.");
 					}).on('error', (e) => {
@@ -847,13 +897,13 @@ if(process.env.VAULT_REFILL_ENABLED){
 					from: process.env.PUBLIC_KEY,
 					to : vaultContract.options.address,
 					data : vaultContract.methods.deplete().encodeABI(),
-					maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-					maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-					gas: web3[selectedProvider].utils.toHex("1000000")
+					maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+					maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+					gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("1000000")
 				};
 
-				web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-					web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+				web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+					web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 					.on('receipt', () => {
 						console.log("Vault successfully depleted.");
 					}).on('error', (e) => {
@@ -884,13 +934,13 @@ if(AUTO_HARVEST_SEC > 0){
 					from: process.env.PUBLIC_KEY,
 					to : nftRewardsContract.options.address,
 					data : nftRewardsContract.methods.claimTokens().encodeABI(),
-					maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-					maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-					gas: web3[selectedProvider].utils.toHex("1000000")
+					maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+					maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+					gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("1000000")
 				};
 
-				web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-					web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+				web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+					web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 					.on('receipt', () => {
 						console.log("Tokens claimed.");
 					}).on('error', (e) => {
@@ -918,13 +968,13 @@ if(AUTO_HARVEST_SEC > 0){
 					from: process.env.PUBLIC_KEY,
 					to : nftRewardsContract.options.address,
 					data : nftRewardsContract.methods.claimPoolTokens(fromRound, toRound).encodeABI(),
-					maxPriorityFeePerGas: web3[selectedProvider].utils.toHex(maxPriorityFeePerGas*1e9),
-					maxFeePerGas: web3[selectedProvider].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
-					gas: web3[selectedProvider].utils.toHex("3000000")
+					maxPriorityFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(maxPriorityFeePerGas*1e9),
+					maxFeePerGas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
+					gas: web3[currentlySelectedWeb3ProviderIndex].utils.toHex("3000000")
 				};
 
-				web3[selectedProvider].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
-					web3[selectedProvider].eth.sendSignedTransaction(signed.rawTransaction)
+				web3[currentlySelectedWeb3ProviderIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY).then(signed => {
+					web3[currentlySelectedWeb3ProviderIndex].eth.sendSignedTransaction(signed.rawTransaction)
 					.on('receipt', () => {
 						console.log("Pool Tokens claimed.");
 					}).on('error', (e) => {
