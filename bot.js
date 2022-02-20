@@ -36,7 +36,7 @@ let allowedLink = false, selectedProvider = null, eventSubTrading = null, eventS
 	providers = [], web3 = [], blocks = [], maxPriorityFeePerGas = 50,
 	openTrades = [], spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = [], ordersTriggered = [],
 	storageContract, tradingContract, tradingAddress, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
-	nftTimelock, maxTradesPerPair,
+	nftTimelock, maxTradesPerPair = 0,
 	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
 
 // --------------------------------------------
@@ -359,7 +359,7 @@ async function fetchTradingVariables(){
 			spreadsP[pairIndex] = pair["0"].spreadP;
 		}));
 
-		maxTradesPerPair = maxPerPair;
+		maxTradesPerPair = typeof maxPerPair === "number" ? maxPerPair : parseInt(maxPerPair, 10);
 	}
 }
 
@@ -424,56 +424,80 @@ async function selectNft(){
 // -----------------------------------------
 
 async function fetchOpenTrades(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	console.log("Fetching open trades...");
+	
+	try {
+		await web3[selectedProvider].eth.net.isListening();
 
 		if(spreadsP.length === 0){
+			console.log("Spreads are not yet loaded; will retry loading open trades shortly!");
+			
 			setTimeout(() => { fetchOpenTrades(); }, 2*1000);
+
 			return;
 		}
 
-		openTrades = [];
+		const [
+			openLimitOrders, 
+			pairTraders
+		] = await Promise.all(
+			[
+				fetchOpenLimitOrders(),
+				fetchOpenPairTrades()
+			]);
+		
+		openTrades = openLimitOrders.concat(pairTraders);
 
-		let openLimitOrdersTypesPromises = [];
-		const openLimitOrders = await storageContract.methods.getOpenLimitOrders().call();
-		for(let i = 0; i < openLimitOrders.length; i++){
-			const l = openLimitOrders[i];
-			openLimitOrdersTypesPromises.push(nftRewardsContract.methods.openLimitOrderTypes(l.trader, l.pairIndex, l.index).call());
-		}
+		console.log("Fetched " + openTrades.length + " total open trade(s).");
 
-		let promisesPairTradersArray = [];
-		for(let i = 0; i < spreadsP.length; i++){
-			promisesPairTradersArray.push(storageContract.methods.pairTradersArray(i).call());
-		}
-
-		Promise.all(openLimitOrdersTypesPromises).then(async (l) => {
-			for(let j = 0; j < l.length; j++){
-				openTrades.push({...openLimitOrders[j], type: l[j]});
-			}
-
-			Promise.all(promisesPairTradersArray).then(async (r) => {
-				let promisesTrade = [];
-
-				for(let j = 0; j < r.length; j ++){
-					for(let a = 0; a < r[j].length; a++){
-						for(let b = 0; b < maxTradesPerPair; b++){
-							promisesTrade.push(storageContract.methods.openTrades(r[j][a], j, b).call());
-						}
-					}
-				}
-
-				Promise.all(promisesTrade).then((trades) => {
-					for(let j = 0; j < trades.length; j++){
-						if(trades[j].leverage.toString() === "0"){ continue; }
-						openTrades.push(trades[j]);
-					}
-
-					console.log("Fetched open trades: " + openTrades.length);
-				});
-			});
-		});
-	}).catch(() => {
+	} catch(error) {
+		console.log("Error fetching open trades: " + error.message, error);
+		
 		setTimeout(() => { fetchOpenTrades(); }, 2*1000);
-	});
+	}
+	
+	async function fetchOpenLimitOrders() {		
+		console.log("Fetching open limit orders...");
+		
+		const openLimitOrders = await storageContract.methods.getOpenLimitOrders().call();
+		
+		const openLimitOrdersWithTypes = await Promise.all(openLimitOrders.map(async olo => {
+			const type = await nftRewardsContract.methods.openLimitOrderTypes(olo.trader, olo.pairIndex, olo.index).call();
+
+			return { ...olo, type };
+		}));
+
+		console.log("Fetched " + openLimitOrdersWithTypes.length + " open limit order(s).");
+
+		return openLimitOrdersWithTypes;
+	}
+
+	async function fetchOpenPairTrades() {
+		console.log("Fetching open pair trades...");
+
+		const allOpenPairTrades = (await Promise.all(spreadsP.map(async (_, spreadPIndex) => {
+			const pairTraderAddresses = await storageContract.methods.pairTradersArray(spreadPIndex).call();
+
+			const openTradesForPairTraders = await Promise.all(pairTraderAddresses.map(async pairTraderAddress => {
+				const openTradesCalls = new Array(maxTradesPerPair);
+
+				for(let pairTradeIndex = 0; pairTradeIndex < maxTradesPerPair; pairTradeIndex++){
+					openTradesCalls[pairTradeIndex] = storageContract.methods.openTrades(pairTraderAddress, spreadPIndex, pairTradeIndex).call();
+				}
+				
+				const openTradesForTraderAddress = await Promise.all(openTradesCalls);
+				
+				// Filter out any of the trades that aren't *really* open (NOTE: these will have an empty trader address, so just test against that)
+				return openTradesForTraderAddress.filter(openTrade => openTrade.trader === pairTraderAddress);
+			}));
+
+			return openTradesForPairTraders;
+		}))).flat(2);
+
+		console.log("Fetched " + allOpenPairTrades.length + " open pair trade(s).");
+
+		return allOpenPairTrades;
+	}
 }
 // -----------------------------------------
 // 9. WATCH TRADING EVENTS
