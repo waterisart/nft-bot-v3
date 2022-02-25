@@ -32,7 +32,7 @@ const abis = require('./abis');
 // 2. GLOBAL VARIABLES
 // -----------------------------------------
 
-let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubTrading = null, eventSubCallbacks = null, nonce = null,
+let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubTrading = null, eventSubCallbacks = null,
 	web3Providers = [], web3Clients = [], maxPriorityFeePerGas = 50,
 	knownOpenTrades = new Map(), spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = new Set(), ordersTriggered = new Set(),
 	storageContract, tradingContract, tradingAddress, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
