@@ -27,7 +27,6 @@ const Web3 = require("web3");
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
 const abis = require('./abis');
-const { allowedNodeEnvironmentFlags } = require("process");
 
 // -----------------------------------------
 // 2. GLOBAL VARIABLES
@@ -35,10 +34,9 @@ const { allowedNodeEnvironmentFlags } = require("process");
 
 let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubOpenLimitPlaced = null,
 	web3Providers = [], web3Clients = [], maxPriorityFeePerGas = 50,
-	knownOpenTrades = new Map(), spreadsP = [], nfts = [], nftsBeingUsed = new Set(), ordersTriggered = new Set(),
+	nfts = [], nftsBeingUsed = new Set(),
 	storageContract, tradingContract, tradingAddress, vaultContract, nftRewardsContract,
-	nftTimelock, maxTradesPerPair = 0,
-	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
+	nftTimelock, nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
 
 // --------------------------------------------
 // 3. INIT: CHECK ENV VARS & LINK ALLOWANCE
