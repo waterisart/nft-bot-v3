@@ -395,7 +395,7 @@ async function selectNft(){
 		// Load the last successful block for each NFT that we know is not actively being used
 		const nftsWithLastSuccesses = await Promise.all(
 				nfts
-					.filter(nft => !nftsBeingUsed.includes(nft.id))
+					.filter(nft => !nftsBeingUsed.has(nft.id))
 					.map(async nft => ({ 
 						nft,
 						lastSuccess: parseFloat(await storageContract.methods.nftLastSuccess(nfts[i].id).call())
@@ -432,7 +432,6 @@ function buildOpenTradeKey(tradeDetails) {
 
 const READ_ONLY_MODE = process.env.READ_ONLY_MODE === "true";
 const targetTraderAddresses = new Set(process.env.TARGET_TRADER_ADDRESSES.split(","));
-const trackedTrades = new Map();
 
 // TODO: purge tracked trades that are older than 10 blocks
 
@@ -444,12 +443,13 @@ async function watchLiveTradingEvents(){
 
 		eventSubOpenLimitPlaced = tradingContract.events.OpenLimitPlaced({ fromBlock: 'latest' })
 			.on('data', async (event) =>{
-				const tradeKey = buildOpenTradeKey({ trader: event.returnValues.trader, pairIndex: event.returnValues.pairIndex, index: event.returnValues.index });
+				const eventReturnValues = event.returnValues;
+				const tradeKey = buildOpenTradeKey({ trader: eventReturnValues.trader, pairIndex: eventReturnValues.pairIndex, index: eventReturnValues.index });
 				
 				console.log("OpenLimitPlaced event received: " + tradeKey);
 				
 				// Only interested in the target traders
-				if(!targetTraderAddresses.has(event.returnValues.trader)){
+				if(!targetTraderAddresses.has(eventReturnValues.trader)){
 					console.log("Event was not triggered by a trader we're targeting; ignoring.");
 					
 					return;
@@ -475,7 +475,7 @@ async function watchLiveTradingEvents(){
 				const tx = {
 					from: process.env.PUBLIC_KEY,
 					to : tradingAddress,
-					data : tradingContract.methods.executeNftOrder(3, event.trader, event.pairIndex, event.index, availableNft.id, availableNft.type).encodeABI(),
+					data : tradingContract.methods.executeNftOrder(3, eventReturnValues.trader, eventReturnValues.pairIndex, eventReturnValues.index, availableNft.id, availableNft.type).encodeABI(),
 					maxPriorityFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(maxPriorityFeePerGas*1e9),
 					maxFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
 					gas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex("2000000")
