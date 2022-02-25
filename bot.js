@@ -35,7 +35,7 @@ const abis = require('./abis');
 let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubOpenLimitPlaced = null,
 	web3Providers = [], web3Clients = [], maxPriorityFeePerGas = 50,
 	nfts = [], nftsBeingUsed = new Set(),
-	storageContract, tradingContract, tradingAddress, vaultContract, nftRewardsContract,
+	storageContract, tradingContract, vaultContract, nftRewardsContract,
 	nftTimelock, nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
 
 // --------------------------------------------
@@ -382,7 +382,7 @@ async function selectNft(){
 		return null; 
 	}
 
-	console.log("NFTs: total loaded=" + nfts.length + ";currently in use=" + nftsBeingUsed.length + ";");
+	console.log("NFTs: total loaded=" + nfts.length + ";currently in use=" + nftsBeingUsed.size + ";");
 
 	try
 	{
@@ -472,7 +472,7 @@ async function watchLiveTradingEvents(){
 
 				const tx = {
 					from: process.env.PUBLIC_KEY,
-					to : tradingAddress,
+					to : tradingContract.options.address,
 					data : tradingContract.methods.executeNftOrder(3, trader, pairIndex, index, availableNft.id, availableNft.type).encodeABI(),
 					maxPriorityFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(maxPriorityFeePerGas*1e9),
 					maxFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
@@ -480,7 +480,6 @@ async function watchLiveTradingEvents(){
 				};
 
 				const signedTransaction = await web3Clients[currentlySelectedWeb3ClientIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY);
-
 
 				if(READ_ONLY_MODE === true) {
 					console.log("READ_ONLY_MODE enabled; not sending transaction:\r\n" + JSON.stringify(tx));
