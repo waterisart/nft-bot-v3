@@ -398,7 +398,7 @@ async function selectNft(){
 					.filter(nft => !nftsBeingUsed.has(nft.id))
 					.map(async nft => ({ 
 						nft,
-						lastSuccess: parseFloat(await storageContract.methods.nftLastSuccess(nfts[i].id).call())
+						lastSuccess: parseFloat(await storageContract.methods.nftLastSuccess(nft.id).call())
 					})));
 
 		// Try to find the first NFT whose last successful block is older than the current block by the required timelock amount
@@ -443,13 +443,13 @@ async function watchLiveTradingEvents(){
 
 		eventSubOpenLimitPlaced = tradingContract.events.OpenLimitPlaced({ fromBlock: 'latest' })
 			.on('data', async (event) =>{
-				const eventReturnValues = event.returnValues;
-				const tradeKey = buildOpenTradeKey({ trader: eventReturnValues.trader, pairIndex: eventReturnValues.pairIndex, index: eventReturnValues.index });
+				const { trader, pairIndex, index } = event.returnValues;
+				const tradeKey = buildOpenTradeKey({ trader, pairIndex, index });
 				
 				console.log("OpenLimitPlaced event received: " + tradeKey);
 				
 				// Only interested in the target traders
-				if(!targetTraderAddresses.has(eventReturnValues.trader)){
+				if(!targetTraderAddresses.has(trader)){
 					console.log("Event was not triggered by a trader we're targeting; ignoring.");
 					
 					return;
@@ -475,7 +475,7 @@ async function watchLiveTradingEvents(){
 				const tx = {
 					from: process.env.PUBLIC_KEY,
 					to : tradingAddress,
-					data : tradingContract.methods.executeNftOrder(3, eventReturnValues.trader, eventReturnValues.pairIndex, eventReturnValues.index, availableNft.id, availableNft.type).encodeABI(),
+					data : tradingContract.methods.executeNftOrder(3, trader, pairIndex, index, availableNft.id, availableNft.type).encodeABI(),
 					maxPriorityFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(maxPriorityFeePerGas*1e9),
 					maxFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
 					gas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex("2000000")
