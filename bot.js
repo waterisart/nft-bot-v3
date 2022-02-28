@@ -26,7 +26,7 @@ const server = require('http').createServer(app);
 const Web3 = require("web3");
 const WebSocket = require('ws');
 const fetch = require('node-fetch');
-const abis = require('./abis');
+const abis = require('./abis.js');
 
 // -----------------------------------------
 // 2. GLOBAL VARIABLES
@@ -461,7 +461,7 @@ async function selectNft(){
 		return null; 
 	}
 
-	console.log("NFTs: total loaded=" + nfts.length + ";currently in use=" + nftsBeingUsed.length + ";");
+	console.log("NFTs: total loaded=" + nfts.length + ";currently in use=" + nftsBeingUsed.size + ";");
 
 	try
 	{
