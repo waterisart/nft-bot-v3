@@ -815,18 +815,28 @@ async function refreshOpenTrades(event){
 // 11. FETCH CURRENT PRICES & TRIGGER ORDERS
 // ---------------------------------------------
 
-let forexMarketClosed = false;
+let forexMarketClosed = true;
 
-setInterval(() => {
-	const d = new Date();
-	const v = d.getUTCDay();    
-	const h = d.getUTCHours();
-	const dom = d.getUTCDate();
-	const mon = d.getUTCMonth();
+function startCheckingIfForexMarketsAreClosed() {
+	forexMarketClosed = areForexMarketsClosed();
 
-	forexMarketClosed = (mon === 11 && dom >= 25 && dom <= 27) || (mon === 0 && dom >= 1 && dom <= 3) || 
-						(v === 5 && h >= 21) || (v === 6) || (v === 0 && h < 21);
-}, 5000);
+	setTimeout(() => {
+		forexMarketClosed = areForexMarketsClosed();
+	}, 5000);
+
+	function areForexMarketsClosed() {
+		const d = new Date();
+		const v = d.getUTCDay();    
+		const h = d.getUTCHours();
+		const dom = d.getUTCDate();
+		const mon = d.getUTCMonth();
+	
+		return (mon === 11 && dom >= 25 && dom <= 27) || (mon === 0 && dom >= 1 && dom <= 3) || 
+							(v === 5 && h >= 21) || (v === 6) || (v === 0 && h < 21);
+	}
+}
+
+startCheckingIfForexMarketsAreClosed();
 
 function wss() {
 	let socket = new WebSocket(process.env.PRICES_URL);
