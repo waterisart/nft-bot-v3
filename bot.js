@@ -47,7 +47,7 @@ if(!process.env.WSS_URLS || !process.env.PRICES_URL || !process.env.STORAGE_ADDR
 }
 
 async function checkLinkAllowance(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	try {
 		const allowance = await linkContract.methods.allowance(process.env.PUBLIC_KEY, process.env.STORAGE_ADDRESS).call();
 		if(parseFloat(allowance) > 0){
 			allowedLink = true;
@@ -77,9 +77,9 @@ async function checkLinkAllowance(){
 				setTimeout(() => { checkLinkAllowance(); }, 2*1000);
 			});
 		}
-	}).catch(() => {
+	} catch {
 		setTimeout(() => { checkLinkAllowance(); }, 5*1000);
-	});
+	}
 }
 
 // -----------------------------------------
@@ -245,7 +245,7 @@ setInterval(() => {
 // -----------------------------------------
 
 async function fetchTradingVariables(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	try {
 		const maxPerPair = await storageContract.methods.maxTradesPerPair().call();
 		const pairsCount = await pairsStorageContract.methods.pairsCount().call();
 		nfts = [];
@@ -295,16 +295,16 @@ async function fetchTradingVariables(){
 				collaterals[j] = {long: collateralLong, short: collateralShort, max: collateralMax};
 			}
 
-			spreadsP = [];
-			for(var j = 0; j < s.length; j++){ spreadsP.push(s[j]["0"].spreadP); }
+		spreadsP = [];
+		for(var j = 0; j < s.length; j++){ spreadsP.push(s[j]["0"].spreadP); }
 
-			maxTradesPerPair = maxPerPair;
+		maxTradesPerPair = maxPerPair;
 
-			console.log("Fetched trading variables.");
-		});
-	}).catch(() => {
-		setTimeout(() => { fetchTradingVariables(); }, 2*1000);
+		console.log("Fetched trading variables.");
 	});
+	} catch {
+		setTimeout(() => { fetchTradingVariables(); }, 2*1000);
+	}
 }
 
 setInterval(() => {
@@ -337,8 +337,7 @@ function selectNft(){
 // -----------------------------------------
 
 async function fetchOpenTrades(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
-
+	try {
 		if(spreadsP.length === 0){
 			setTimeout(() => { fetchOpenTrades(); }, 2*1000);
 			return;
@@ -384,16 +383,16 @@ async function fetchOpenTrades(){
 				});
 			});
 		});
-	}).catch(() => {
+	} catch {
 		setTimeout(() => { fetchOpenTrades(); }, 2*1000);
-	});
+	}
 }
 // -----------------------------------------
 // 9. WATCH TRADING EVENTS
 // -----------------------------------------
 
 function watchLiveTradingEvents(){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	try {
 		if(eventSubTrading === null){
 			eventSubTrading = tradingContract.events.allEvents({ fromBlock: 'latest' }).on('data', function (event){
 				const eventName = event.event.toString();
@@ -429,9 +428,9 @@ function watchLiveTradingEvents(){
 				}, process.env.EVENT_CONFIRMATIONS_SEC*1000);
 			});
 		}
-	}).catch(() => {
+	} catch {
 		setTimeout(() => { watchLiveTradingEvents(); }, 2*1000);
-	});
+	}
 }
 
 // -----------------------------------------
@@ -439,7 +438,7 @@ function watchLiveTradingEvents(){
 // -----------------------------------------
 
 async function refreshOpenTrades(event){
-	web3[selectedProvider].eth.net.isListening().then(async () => {
+	try {
 		const eventName = event.event.toString();
 		const v = event.returnValues;
 		let failed = false;
@@ -595,7 +594,9 @@ async function refreshOpenTrades(event){
 
 			console.log("Watch events ("+eventName+"): Trade not found on the blockchain, trying again in "+(process.env.EVENT_CONFIRMATIONS_SEC/2)+" seconds.");
 		}
-	}).catch((e) => { console.log("Problem when refreshing trades", e); });
+	} catch(e) { 
+		console.log("Problem when refreshing trades", e); 
+	}
 }
 
 // ---------------------------------------------
