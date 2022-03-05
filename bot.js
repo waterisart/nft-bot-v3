@@ -26,10 +26,11 @@ const VAULT_ABI = [{"inputs":[{"internalType":"contractStorageInterfaceV5","name
 
 let allowedLink = false, selectedProvider = null, eventSubTrading = null, eventSubCallbacks = null, nonce = null,
 	providers = [], web3 = [], blocks = [], maxPriorityFeePerGas = 50,
-	openTrades = [], spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = [], ordersTriggered = [],
+	openTrades = [], spreadsP = [], openInterests = [], collaterals = [], nfts = [], ordersTriggered = [],
 	storageContract, tradingContract, tradingAddress, aggregatorContract, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
-	nftTimelock, maxTradesPerPair,
-	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
+	maxTradesPerPair,
+	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract,
+	nextNftIndex = 0;
 
 // --------------------------------------------
 // 3. INIT: CHECK ENV VARS & LINK ALLOWANCE
@@ -246,7 +247,6 @@ setInterval(() => {
 async function fetchTradingVariables(){
 	web3[selectedProvider].eth.net.isListening().then(async () => {
 		const maxPerPair = await storageContract.methods.maxTradesPerPair().call();
-		const nftSuccessTimelock = await storageContract.methods.nftSuccessTimelock().call();
 		const pairsCount = await pairsStorageContract.methods.pairsCount().call();
 		nfts = [];
 
@@ -298,7 +298,6 @@ async function fetchTradingVariables(){
 			spreadsP = [];
 			for(var j = 0; j < s.length; j++){ spreadsP.push(s[j]["0"].spreadP); }
 
-			nftTimelock = nftSuccessTimelock;
 			maxTradesPerPair = maxPerPair;
 
 			console.log("Fetched trading variables.");
@@ -317,30 +316,20 @@ setInterval(() => {
 // 7. SELECT NFT TO EXECUTE ORDERS
 // -----------------------------------------
 
-async function selectNft(){
-	return new Promise(async resolve => {
-		if(nftTimelock === undefined || nfts.length === 0){ resolve(null); return; }
-		
-		web3[selectedProvider].eth.net.isListening().then(async () => {
-			const currentBlock = await web3[selectedProvider].eth.getBlockNumber();
+function selectNft(){
+	if(nfts.length === 0) { 
+		return null;
+	}
 
-			for(var i = 0; i < nfts.length; i++){
-				const lastSuccess = await storageContract.methods.nftLastSuccess(nfts[i].id).call();
-				if(parseFloat(currentBlock) - parseFloat(lastSuccess) >= nftTimelock
-				&& !nftsBeingUsed.includes(nfts[i].id)){
-					//console.log("Selected NFT #" + nfts[i].id);
-					resolve(nfts[i]);
-					return;
-				}
-			}
+	const nextNft = nfts[nextNftIndex];
+	
+	nextNftIndex++;
 
-			console.log("No suitable NFT to select.");
-			resolve(null);
+	if(nextNftIndex === nfts.length) { 
+		nextNftIndex = 0; 
+	}
 
-		}).catch(() => {
-			resolve(null);
-		});
-	});
+	return nextNft;
 }
 
 // -----------------------------------------
@@ -698,7 +687,7 @@ function wss(){
 
 				if(orderType > -1 && !alreadyTriggered(t, orderType)){
 
-					const nft = await selectNft();
+					const nft = selectNft();
 					if(nft === null){ return; }
 
 					const orderInfo = {nftId: nft.id, trade: t, type: orderType,
@@ -711,9 +700,8 @@ function wss(){
 						if(error){
 							console.log("Tx error (order type: " + orderInfo.name + ", nft id: "+orderInfo.nftId+"), not triggering: ", error.message);
 						}else{
-							if(alreadyTriggered(t, orderType) || nftsBeingUsed.includes(nft.id)) return;
+							if(alreadyTriggered(t, orderType)) return;
 
-							nftsBeingUsed.push(nft.id);
 							ordersTriggered.push({trade: t, orderType: orderType});
 
 							const tx = {
@@ -731,14 +719,12 @@ function wss(){
 									console.log("Triggered (order type: " + orderInfo.name + ", nft id: "+orderInfo.nftId+")");
 									setTimeout(() => {
 										ordersTriggered = ordersTriggered.filter(item => JSON.stringify(item) !== JSON.stringify({trade:orderInfo.trade, orderType: orderInfo.type}));
-										nftsBeingUsed = nftsBeingUsed.filter(item => item !== orderInfo.nftId);
 									}, process.env.TRIGGER_TIMEOUT*1000);
 							    }).on('error', (e) => {
 							    	console.log("Failed to trigger (order type: " + orderInfo.name + ", nft id: "+orderInfo.nftId+")");
 									//console.log("Tx error (" + e + ")");
 							    	setTimeout(() => {
 										ordersTriggered = ordersTriggered.filter(item => JSON.stringify(item) !== JSON.stringify({trade:orderInfo.trade, orderType: orderInfo.type}));
-										nftsBeingUsed = nftsBeingUsed.filter(item => item !== orderInfo.nftId);
 									}, process.env.TRIGGER_TIMEOUT*1000);
 							    });
 							}).catch(e => {
@@ -746,7 +732,6 @@ function wss(){
 								//console.log("Tx error (" + e + ")");
 						    	setTimeout(() => {
 									ordersTriggered = ordersTriggered.filter(item => JSON.stringify(item) !== JSON.stringify({trade:orderInfo.trade, orderType: orderInfo.type}));
-									nftsBeingUsed = nftsBeingUsed.filter(item => item !== orderInfo.nftId);
 								}, process.env.TRIGGER_TIMEOUT*1000);
 							});
 						}
