@@ -889,6 +889,7 @@ function wss() {
 			}
 
 			const price = messageData.closes[openTrade.pairIndex];
+			if (!(price > 0)) continue; // When forex prices are null
 			const buy = openTrade.buy.toString() === "true";
 			let orderType = -1;
 
