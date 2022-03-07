@@ -967,8 +967,8 @@ function wss() {
 					await web3Clients[currentlySelectedWeb3ClientIndex].eth.sendSignedTransaction(signedTransaction.rawTransaction)
 					
 					console.log("Triggered (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")");
-				}
-				catch(error) {console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
+				} catch(error) {
+					console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
 
 					setTimeout(() => {
 						ordersTriggered.delete(triggeredOrderTrackingInfoIdentifier);
