@@ -35,6 +35,7 @@ let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubTrading 
 	storageContract, tradingContract, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
 	nftTimelock = 0, maxTradesPerPair = 0,
 	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
+const orderTypes = {0:"TP", 1:"SL", 2:"LIQ", 3:"OPEN"} // For logging purposes
 
 // --------------------------------------------
 // 3. INIT: CHECK ENV VARS & LINK ALLOWANCE
@@ -950,7 +951,7 @@ function wss() {
 					return; 
 				}
 
-				//console.log("Trying to trigger " + triggeredOrderTrackingInfoIdentifier + " order with nft: " + triggeredOrderTrackingInfo.id + ")");
+				console.log("Trying to trigger " + orderTypes[triggeredOrderTrackingInfo.type] + " order with nft: " + availableNft.id + ")");
 
 				const tx = {
 					from: process.env.PUBLIC_KEY,
@@ -971,7 +972,7 @@ function wss() {
 					
 					await web3Clients[currentlySelectedWeb3ClientIndex].eth.sendSignedTransaction(signedTransaction.rawTransaction)
 					
-					console.log("Triggered (order type: " + triggeredOrderTrackingInfo.type + ", nft id: " + availableNft.id + ")");
+					console.log("Triggered (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")");
 
 					triggeredOrderCleanupTimerId = setTimeout(() => {
 						if(triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
@@ -979,7 +980,7 @@ function wss() {
 						}
 					}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
 				} catch(error) {
-					console.log("An unexpected error occurred trying to trigger an order (order type: " + triggeredOrderTrackingInfo.type + ", nft id: " + availableNft.id + ")", error);
+					console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
 
 					triggeredOrderCleanupTimerId = setTimeout(() => {
 						if(!triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
