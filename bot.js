@@ -35,7 +35,7 @@ let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubTrading 
 	storageContract, tradingContract, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
 	nftTimelock = 0, maxTradesPerPair = 0,
 	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
-	const orderTypes = {0:"TP", 1:"SL", 2:"LIQ", 3:"OPEN"} // For logging purposes
+const orderTypes = {0:"TP", 1:"SL", 2:"LIQ", 3:"OPEN"} // For logging purposes
 
 // --------------------------------------------
 // 3. INIT: CHECK ENV VARS & LINK ALLOWANCE
@@ -869,7 +869,7 @@ function wss() {
 		}
 
 		if(!allowedLink) {
-			// console.log("WARNING: link is not currently allowed; unable to process any trades!");
+			//console.log("WARNING: link is not currently allowed; unable to process any trades!");
 
 			return;
 		}
@@ -978,16 +978,16 @@ function wss() {
 					triggeredOrderCleanupTimerId = setTimeout(() => {
 						if(triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
 							console.log(`Never heard back from the blockchain about triggered order ${triggeredOrderTrackingInfoIdentifier}; removed from tracking.`);
-				}
-			}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
-		} catch(error) {
-				console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
+						}
+					}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
+				} catch(error) {
+					console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
 
-				triggeredOrderCleanupTimerId = setTimeout(() => {
-					if(!triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
-						console.log(`Tried to clean up triggered order ${triggeredOrderTrackingInfoIdentifier} which previous failed, but it was already removed?`);
-					}
-					
+					triggeredOrderCleanupTimerId = setTimeout(() => {
+						if(!triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
+							console.log(`Tried to clean up triggered order ${triggeredOrderTrackingInfoIdentifier} which previous failed, but it was already removed?`);
+						}
+						
 					}, FAILED_ORDER_TRIGGER_TIMEOUT_MS);
 				} finally {
 					// Always clean up tracking state around active processing of this order
