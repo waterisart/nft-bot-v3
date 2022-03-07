@@ -31,10 +31,11 @@ const abis = require('./abis.js');
 
 let allowedLink = false, currentlySelectedWeb3ClientIndex = -1, eventSubTrading = null, eventSubCallbacks = null,
 	web3Providers = [], web3Clients = [], maxPriorityFeePerGas = 50,
-	knownOpenTrades = new Map(), spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = new Set(), triggeredOrders = new Map(),
+	knownOpenTrades = new Map(), spreadsP = [], openInterests = [], collaterals = [], nfts = [], nftsBeingUsed = new Set(), ordersTriggered = new Set(),
 	storageContract, tradingContract, callbacksContract, vaultContract, pairsStorageContract, nftRewardsContract,
 	nftTimelock = 0, maxTradesPerPair = 0,
 	nftContract1, nftContract2, nftContract3, nftContract4, nftContract5, linkContract;
+	const orderTypes = {0:"TP", 1:"SL", 2:"LIQ", 3:"OPEN"} // For logging purposes
 
 // --------------------------------------------
 // 3. INIT: CHECK ENV VARS & LINK ALLOWANCE
@@ -786,15 +787,8 @@ async function refreshOpenTrades(event){
 					type: eventValues.orderType,
 				});
 
-				const triggeredOrderTimerId = triggeredOrders.get(triggeredOrderTrackingInfoIdentifier);
-				
-				// If we were tracking this triggered order, stop tracking it now and clear the timeout so it doesn't
-				// interrupt the event loop for no reason later
-				if(triggeredOrderTimerId !== undefined) {
-					clearTimeout(triggeredOrderTimerId);
-					
-					triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier);
-				}
+				// Stop tracking having triggered this order (in case we were)
+				ordersTriggered.delete(triggeredOrderTrackingInfoIdentifier);
 
 				const tradeKey = buildOpenTradeKey({ trader, pairIndex, index });
 				const existingKnownOpenTrade = knownOpenTrades.get(tradeKey);
@@ -868,7 +862,7 @@ function wss() {
 		}
 
 		if(!allowedLink) {
-			//console.log("WARNING: link is not currently allowed; unable to process any trades!");
+			// console.log("WARNING: link is not currently allowed; unable to process any trades!");
 
 			return;
 		}
@@ -889,6 +883,7 @@ function wss() {
 			}
 
 			const price = messageData.closes[openTrade.pairIndex];
+			if (!(price > 0)) continue; // When forex prices are null
 			const buy = openTrade.buy.toString() === "true";
 			let orderType = -1;
 
@@ -935,7 +930,7 @@ function wss() {
 
 				const triggeredOrderTrackingInfoIdentifier = buildTriggeredOrderTrackingInfoIdentifier(triggeredOrderTrackingInfo);
 
-				if(triggeredOrders.has(triggeredOrderTrackingInfoIdentifier)) {
+				if(ordersTriggered.has(triggeredOrderTrackingInfoIdentifier)) {
 					console.log("Order has already been triggered; skipping.");
 
 					continue;
@@ -950,47 +945,37 @@ function wss() {
 					return; 
 				}
 
-				//console.log("Trying to trigger " + triggeredOrderTrackingInfoIdentifier + " order with nft: " + triggeredOrderTrackingInfo.id + ")");
+				console.log("Trying to trigger " + orderTypes[triggeredOrderTrackingInfo.type] + " order with nft: " + availableNft.id + ")");
 
 				const tx = {
 					from: process.env.PUBLIC_KEY,
 					to: tradingContract.options.address,
-					data : tradingContract.methods.executeNftOrder(orderType, openTrade.trader, openTrade.pairIndex, openTrade.index, availableNft.id, availableNft.type).encodeABI(),
+					data : tradingContract.methods.executeNftOrder(orderType, openTrade.trader, openTrade.pairIndex, openTrade.index, parseInt(availableNft.id), availableNft.type).encodeABI(),
 					maxPriorityFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(maxPriorityFeePerGas*1e9),
 					maxFeePerGas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex(MAX_GAS_PRICE_GWEI*1e9),
 					gas: web3Clients[currentlySelectedWeb3ClientIndex].utils.toHex("2000000")
 				};
 
 				const signedTransaction = await web3Clients[currentlySelectedWeb3ClientIndex].eth.accounts.signTransaction(tx, process.env.PRIVATE_KEY);
-				let triggeredOrderCleanupTimerId;
 
 				try
 				{
 					// Track that these are being actively used in processing of this order
 					nftsBeingUsed.add(availableNft.id);
+					ordersTriggered.add(triggeredOrderTrackingInfoIdentifier);
 					
 					await web3Clients[currentlySelectedWeb3ClientIndex].eth.sendSignedTransaction(signedTransaction.rawTransaction)
 					
-					console.log("Triggered (order type: " + triggeredOrderTrackingInfo.type + ", nft id: " + availableNft.id + ")");
+					console.log("Triggered (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")");
+				}
+				catch(error) {console.log("An unexpected error occurred trying to trigger an order (order type: " + orderTypes[triggeredOrderTrackingInfo.type] + ", nft id: " + availableNft.id + ")", error);
 
-					triggeredOrderCleanupTimerId = setTimeout(() => {
-						if(triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
-							console.log(`Never heard back from the blockchain about triggered order ${triggeredOrderTrackingInfoIdentifier}; removed from tracking.`);
-						}
-					}, FAILED_ORDER_TRIGGER_TIMEOUT_MS * 10);
-				} catch(error) {
-					console.log("An unexpected error occurred trying to trigger an order (order type: " + triggeredOrderTrackingInfo.type + ", nft id: " + availableNft.id + ")", error);
-
-					triggeredOrderCleanupTimerId = setTimeout(() => {
-						if(!triggeredOrders.delete(triggeredOrderTrackingInfoIdentifier)) {
-							console.log(`Tried to clean up triggered order ${triggeredOrderTrackingInfoIdentifier} which previous failed, but it was already removed?`);
-						}
-
+					setTimeout(() => {
+						ordersTriggered.delete(triggeredOrderTrackingInfoIdentifier);
 					}, FAILED_ORDER_TRIGGER_TIMEOUT_MS);
 				} finally {
 					// Always clean up tracking state around active processing of this order
 					nftsBeingUsed.delete(availableNft.id);
-					triggeredOrders.set(triggeredOrderTrackingInfoIdentifier, triggeredOrderCleanupTimerId);
 				}
 			}
 		}		
